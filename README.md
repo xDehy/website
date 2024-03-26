@@ -1,5 +1,3 @@
-# website
-
-## Simple personal website
+# personal website
 
 - https://dehy.lol/
