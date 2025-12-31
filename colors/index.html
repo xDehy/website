@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Converter</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+</head>
+<body>
+
+    <!-- Notification Toast -->
+    <div id="toast">
+        <i class="fas fa-check"></i>
+        <span>Copied to clipboard</span>
+    </div>
+
+    <!-- Main Container -->
+    <main class="glass-panel">
+        
+        <!-- Glow Element -->
+        <div id="glow-bg" class="glow-bg"></div>
+
+        <div class="content">
+            
+            <header>
+                <h1>Color Converter</h1>
+                <p>Hex • RGB • HSL • CMYK</p>
+            </header>
+
+            <!-- Input Section -->
+            <div style="position: relative;">
+                <div class="input-group">
+                    <div class="swatch-container">
+                        <div id="input-swatch"></div>
+                    </div>
+                    <input 
+                        type="text" 
+                        id="colorInput" 
+                        placeholder="e.g. 203, 100%, 78%" 
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <div id="validity-icon" class="validity-icon"></div>
+                </div>
+                <p id="error-msg" class="error-msg">INVALID FORMAT</p>
+            </div>
+
+            <!-- Results Grid -->
+            <div class="results-container">
+                
+                <!-- HEX -->
+                <div class="result-card" onclick="copyToClipboard('hex-val')">
+                    <div class="card-label">
+                        <span>HEX</span>
+                        <i class="far fa-copy"></i>
+                    </div>
+                    <div id="hex-val" class="card-value">#------</div>
+                </div>
+
+                <!-- RGB -->
+                <div class="result-card" onclick="copyToClipboard('rgb-val')">
+                    <div class="card-label">
+                        <span>RGB</span>
+                        <i class="far fa-copy"></i>
+                    </div>
+                    <div id="rgb-val" class="card-value">rgb(-, -, -)</div>
+                </div>
+
+                <!-- HSL -->
+                <div class="result-card" onclick="copyToClipboard('hsl-val')">
+                    <div class="card-label">
+                        <span>HSL</span>
+                        <i class="far fa-copy"></i>
+                    </div>
+                    <div id="hsl-val" class="card-value">hsl(-, -%, -%)</div>
+                </div>
+
+                <!-- CMYK -->
+                <div class="result-card" onclick="copyToClipboard('cmyk-val')">
+                    <div class="card-label">
+                        <span>CMYK</span>
+                        <i class="far fa-copy"></i>
+                    </div>
+                    <div id="cmyk-val" class="card-value">cmyk(-%, -%, -%, -%)</div>
+                </div>
+
+            </div>
+        </div>
+        
+    </main>
+
+    <!-- Hidden parsing element -->
+    <div id="color-parser" style="display: none;"></div>
+
+    <script>
+        const colorInput = document.getElementById('colorInput');
+        const glowBg = document.getElementById('glow-bg');
+        const inputSwatch = document.getElementById('input-swatch');
+        const parser = document.getElementById('color-parser');
+        const errorMsg = document.getElementById('error-msg');
+        const validityIcon = document.getElementById('validity-icon');
+
+        // Outputs
+        const hexVal = document.getElementById('hex-val');
+        const rgbVal = document.getElementById('rgb-val');
+        const hslVal = document.getElementById('hsl-val');
+        const cmykVal = document.getElementById('cmyk-val');
+
+        // Initial color setup
+        processColor('#3B82F6');
+        colorInput.value = '#3B82F6';
+
+        // Event Listeners
+        colorInput.addEventListener('input', (e) => {
+            processColor(e.target.value);
+        });
+
+        function processColor(input) {
+            // 1. Normalize and Validate
+            const rgba = getRgbaFromInput(input);
+            
+            if (!rgba) {
+                setInvalidState();
+                return;
+            }
+
+            setValidState();
+            
+            const [r, g, b, a] = rgba;
+
+            // 2. Convert to formats
+            const hex = rgbToHex(r, g, b);
+            const hsl = rgbToHsl(r, g, b);
+            const cmyk = rgbToCmyk(r, g, b);
+            
+            // 3. Update UI
+            updateUI(r, g, b, a, hex, hsl, cmyk);
+        }
+
+        // Helper: Try browser native parsing first, then fallback to loose regex patterns
+        function getRgbaFromInput(colorStr) {
+            if(!colorStr.trim()) return null;
+            let cssString = colorStr.trim();
+
+            // --- 1. PRE-PROCESSING FOR LOOSE FORMATS ---
+            
+            // Loose HSL: 3 nums with % (e.g. "203, 50%, 40%") or space separated
+            const looseHsl = cssString.match(/^(\d{1,3})\s*[, ]\s*(\d{1,3})%\s*[, ]\s*(\d{1,3})%$/);
+            if (looseHsl) {
+                cssString = `hsl(${looseHsl[1]}, ${looseHsl[2]}%, ${looseHsl[3]}%)`;
+            }
+
+            // Loose RGB: 3 nums NO % (e.g. "255, 0, 100") or space separated
+            const looseRgb = cssString.match(/^(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})$/);
+            if (looseRgb) {
+                cssString = `rgb(${looseRgb[1]}, ${looseRgb[2]}, ${looseRgb[3]})`;
+            }
+
+            // Loose CMYK: 4 nums (e.g. "100, 0, 50, 20")
+            const looseCmyk = cssString.match(/^(\d{1,3})%?\s*[, ]\s*(\d{1,3})%?\s*[, ]\s*(\d{1,3})%?\s*[, ]\s*(\d{1,3})%?$/);
+            if (looseCmyk) {
+                return cmykToRgbArr(looseCmyk[1], looseCmyk[2], looseCmyk[3], looseCmyk[4]);
+            }
+
+            // --- 2. BROWSER NATIVE PARSING ---
+
+            parser.style.color = '';
+            parser.style.color = cssString;
+            
+            if (parser.style.color === '') {
+                // Try adding '#' if it looks like hex (e.g. "FF0000")
+                if (/^[0-9A-F]{3,8}$/i.test(cssString)) {
+                    parser.style.color = '#' + cssString;
+                } 
+                
+                if (parser.style.color === '') return null;
+            }
+
+            document.body.appendChild(parser);
+            const computedColor = window.getComputedStyle(parser).color;
+            document.body.removeChild(parser);
+
+            const regex = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/;
+            const match = computedColor.match(regex);
+
+            if (match) {
+                return [
+                    parseInt(match[1]),
+                    parseInt(match[2]),
+                    parseInt(match[3]),
+                    match[4] ? parseFloat(match[4]) : 1
+                ];
+            }
+            return null;
+        }
+
+        function cmykToRgbArr(c, m, y, k) {
+            c = parseFloat(c) / 100;
+            m = parseFloat(m) / 100;
+            y = parseFloat(y) / 100;
+            k = parseFloat(k) / 100;
+
+            let r = 1 - Math.min(1, c * (1 - k) + k);
+            let g = 1 - Math.min(1, m * (1 - k) + k);
+            let b = 1 - Math.min(1, y * (1 - k) + k);
+
+            return [
+                Math.round(r * 255),
+                Math.round(g * 255),
+                Math.round(b * 255),
+                1
+            ];
+        }
+
+        function updateUI(r, g, b, a, hex, hsl, cmyk) {
+            const rgbString = `rgb(${r}, ${g}, ${b})`;
+            
+            // Update Glow and Swatch
+            glowBg.style.background = `radial-gradient(circle at center top, ${rgbString}, transparent 70%)`;
+            inputSwatch.style.backgroundColor = rgbString;
+            inputSwatch.style.boxShadow = `0 0 15px ${rgbString}`;
+            
+            // Text Values
+            hexVal.textContent = hex.toUpperCase();
+            rgbVal.textContent = rgbString;
+            hslVal.textContent = `hsl(${hsl.h}, ${hsl.s}%, ${hsl.l}%)`;
+            cmykVal.textContent = `cmyk(${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%)`;
+        }
+
+        function setInvalidState() {
+            errorMsg.classList.add('visible');
+            validityIcon.innerHTML = '<i class="fas fa-exclamation-circle text-red"></i>';
+            inputSwatch.style.backgroundColor = '#333';
+            inputSwatch.style.boxShadow = 'none';
+            glowBg.style.background = `radial-gradient(circle at center top, #333, transparent 70%)`;
+        }
+
+        function setValidState() {
+            errorMsg.classList.remove('visible');
+            validityIcon.innerHTML = ''; 
+        }
+
+        // --- Converters ---
+
+        function componentToHex(c) {
+            var hex = c.toString(16);
+            return hex.length == 1 ? "0" + hex : hex;
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+        }
+
+        function rgbToHsl(r, g, b) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+
+            var max = Math.max(r, g, b), min = Math.min(r, g, b);
+            var h, s, l = (max + min) / 2;
+
+            if (max == min) {
+                h = s = 0; // achromatic
+            } else {
+                var d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+
+                h /= 6;
+            }
+
+            return {
+                h: Math.round(h * 360),
+                s: Math.round(s * 100),
+                l: Math.round(l * 100)
+            };
+        }
+
+        function rgbToCmyk(r, g, b) {
+            let c = 0;
+            let m = 0;
+            let y = 0;
+            let k = 0;
+
+            r = r / 255;
+            g = g / 255;
+            b = b / 255;
+
+            k = Math.min(1 - r, 1 - g, 1 - b);
+
+            if(k !== 1){
+                c = (1 - r - k) / (1 - k);
+                m = (1 - g - k) / (1 - k);
+                y = (1 - b - k) / (1 - k);
+            }
+
+            return {
+                c: Math.round(c * 100),
+                m: Math.round(m * 100),
+                y: Math.round(y * 100),
+                k: Math.round(k * 100)
+            }
+        }
+
+        // --- Utilities ---
+
+        window.copyToClipboard = function(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            
+            const tempInput = document.createElement("textarea");
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+
+            showToast();
+        };
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
