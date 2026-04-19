@@ -152,7 +152,6 @@ h3 {
     transition: 0.7s ease-in-out;
 }
 
-/* Profile Banner */
 .card.profile {
     grid-column: span 2;
     padding: 0;
@@ -223,6 +222,11 @@ h3 {
     color: var(--text-secondary);
     font-size: 0.95rem;
     max-width: 300px;
+}
+
+.header-svg {
+    max-height: 63px;
+    height: auto;
 }
 
 /* Project Highlight */
